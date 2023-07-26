@@ -4,6 +4,9 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
 from langchain.chains import RetrievalQA
+from langchain.document_loaders import TextLoader, CSVLoader, UnstructuredWordDocumentLoader, EverNoteLoader, \
+    UnstructuredEPubLoader, UnstructuredHTMLLoader, UnstructuredMarkdownLoader, UnstructuredODTLoader, PyMuPDFLoader, \
+    UnstructuredPowerPointLoader, UnstructuredEmailLoader
 
 from matplotlib import pyplot as plt
 from PIL import Image
@@ -29,13 +32,15 @@ def generate_response(uploaded_file, openai_api_key, query_text):
         return qa.run(query_text)
 
 # Page title
-st.set_page_config(page_title='🦜🔗 VitroGPT')
+st.set_page_config(page_title='VitroGPT')
 col1, col2 = st.columns([0.6, 0.4])
 with col1:
     st.image(image, use_column_width="auto")
 with col2:
     #st.title("VitroGPT")
-    st.markdown("<h2 style='text-align: center;'>VitroGPT</h2>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>VitroGPT</h1>", unsafe_allow_html=True)
+
+api_key = st.sidebar.text_input("OpenAI API-Key", key="openai_api_key", type="password")
 
 # File upload
 uploaded_file = st.file_uploader('Upload an article', type='txt')
