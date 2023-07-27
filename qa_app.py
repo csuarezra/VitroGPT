@@ -2,7 +2,10 @@ import os
 import PyPDF2
 import random
 import itertools
+import pyttsx3
 import streamlit as st
+import speech_recognition as sr
+
 from io import StringIO
 from langchain.vectorstores import FAISS
 from langchain.chains import RetrievalQA
@@ -14,7 +17,20 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain.callbacks.manager import CallbackManager
 from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.memory import ConversationBufferMemory
+from langchain.docstore.document import Document
 
+os.environ['OPENAI_API_KEY'] = st.secrets['OPENAI_API_KEY']
+
+# Different GPT Models
+MODEL_GPT4_MARCH    = "gpt-4-0314"
+MODEL_GPT4          = "gpt-4"
+MODEL_GPT3_MARCH    = "gpt-3.5-turbo-16k-0301"
+MODEL_GPT3          = "gpt-3.5-turbo-16k"
+
+# Memory
+memory = ConversationBufferMemory(memory_key="history", input_key="question")
+conversation_history = []
 
 st.set_page_config(page_title="VitroGPT",page_icon=':shark:')
 
@@ -98,8 +114,42 @@ def generate_eval(text, N, chunk):
     eval_set_full = list(itertools.chain.from_iterable(eval_set))
     return eval_set_full
 
+def speech_to_text():
+    recognizer = sr.Recognizer()
+
+    with sr.Microphone() as source:
+        print("Listening...")
+        recognizer.adjust_for_ambient_noise(source)
+        audio = recognizer.listen(source)
+
+    try:
+        #query = recognizer.recognize_google(audio, language = "es-MX")
+        query = recognizer.recognize_whisper_api(audio)
+        print(f"User: {query}")
+        return query
+    except sr.UnknownValueError:
+        print("Sorry, I did not understand what you said.")
+        return ""
+    except sr.RequestError as e:
+        print(f"Could not request results; {e}")
+        return ""
+
+def text_to_speech(text):
+    engine = pyttsx3.init()
+    voices = engine.getProperty('voices')
+    engine.setProperty("voice", voices[2].id)
+    engine.setProperty('rate', 150)  # You can adjust the speech rate (words per minute)
+    engine.say(text)
+    engine.runAndWait()
+    return text
+
+def display_conversation_history(conversation_history):
+        # Function to render the chat history in a more interactive way
+        for i in range(len(conversation_history)):
+            st.markdown(f"**Q{i+1}:** {conversation_history[i][0]}\n **A{i+1}:** {conversation_history[i][1]}")
 
 # ...
+
 
 def main():
     
@@ -174,14 +224,14 @@ def main():
    
 
     st.write(
-    f"""
-    <div style="display: flex; align-items: center; margin-left: 0;">
-        <h1 style="display: inline-block;">VitroGPT</h1>
-        <sup style="margin-left:5px;font-size:small; color: green;">beta</sup>
-    </div>
-    """,
-    unsafe_allow_html=True,
-        )
+        f"""
+        <div style="display: flex; align-items: center; margin-left: 0;">
+            <h1 style="display: inline-block;">VitroGPT</h1>
+            <sup style="margin-left:5px;font-size:small; color: green;">beta</sup>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     
     
 
@@ -200,12 +250,11 @@ def main():
     # Use RecursiveCharacterTextSplitter as the default and only text splitter
     splitter_type = "RecursiveCharacterTextSplitter"
 
-    os.environ["OPENAI_API_KEY"] = st.secrets['OPENAI_API_KEY']
-
-    uploaded_files = st.file_uploader("Upload a PDF or TXT Document", type=[
+    uploaded_files = st.sidebar.file_uploader("Upload a PDF or TXT Document", type=[
                                       "pdf", "txt"], accept_multiple_files=True)
 
     if uploaded_files:
+
         # Check if last_uploaded_files is not in session_state or if uploaded_files are different from last_uploaded_files
         if 'last_uploaded_files' not in st.session_state or st.session_state.last_uploaded_files != uploaded_files:
             st.session_state.last_uploaded_files = uploaded_files
@@ -214,7 +263,7 @@ def main():
 
         # Load and process the uploaded PDF or TXT files.
         loaded_text = load_docs(uploaded_files)
-        st.write("Documents uploaded and processed.")
+        st.sidebar.write("Documents uploaded and processed.")
 
         # Split the document into chunks
         splits = split_texts(loaded_text, chunk_size=1000,
@@ -222,7 +271,7 @@ def main():
 
         # Display the number of text chunks
         num_chunks = len(splits)
-        st.write(f"Number of text chunks: {num_chunks}")
+        st.sidebar.write(f"Number of text chunks: {num_chunks}")
 
         # Embed using OpenAI embeddings
             # Embed using OpenAI embeddings or HuggingFace embeddings
@@ -240,37 +289,49 @@ def main():
         callback_manager = CallbackManager([callback_handler])
 
         chat_openai = ChatOpenAI(
-            streaming=True, callback_manager=callback_manager, verbose=True, temperature=0)
-        qa = RetrievalQA.from_chain_type(llm=chat_openai, retriever=retriever, chain_type="stuff", verbose=True)
+            model=MODEL_GPT4_MARCH, 
+            streaming=True, 
+            callback_manager=callback_manager, 
+            verbose=True, 
+            temperature=0
+        )
 
-        # Check if there are no generated question-answer pairs in the session state
-        if 'eval_set' not in st.session_state:
-            # Use the generate_eval function to generate question-answer pairs
-            num_eval_questions = 5  # Number of question-answer pairs to generate
-            st.session_state.eval_set = generate_eval(
-                loaded_text, num_eval_questions, 3000)
+        qa = RetrievalQA.from_chain_type(
+            llm=chat_openai, 
+            retriever=retriever, 
+            chain_type="stuff", 
+            verbose=True,
+            chain_type_kwargs={
+                "verbose": True,
+                "memory": memory
+            },
+            return_source_documents=True
+        )
 
-       # Display the question-answer pairs in the sidebar with smaller text
-        for i, qa_pair in enumerate(st.session_state.eval_set):
-            st.sidebar.markdown(
-                f"""
-                <div class="css-card">
-                <span class="card-tag">Question {i + 1}</span>
-                    <p style="font-size: 12px;">{qa_pair['question']}</p>
-                    <p style="font-size: 12px;">{qa_pair['answer']}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            # <h4 style="font-size: 14px;">Question {i + 1}:</h4>
-            # <h4 style="font-size: 14px;">Answer {i + 1}:</h4>
-        st.write("Ready to answer questions.")
+        # Store LLM generated responses
+        if "messages" not in st.session_state.keys():
+            st.session_state.messages = [{"role": "assistant", "content": "How may I help you?"}]
 
-        # Question and answering
-        user_question = st.text_input("Enter your question:")
-        if user_question:
-            answer = qa.run(user_question)
-            st.write("Answer:", answer)
+        # Display chat messages
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.write(message["content"])
+
+        # User-provided prompt
+        if prompt := st.chat_input():
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("Ask your question:"):
+                st.write(prompt)
+
+        # Generate a new response if last message is not from assistant
+        if st.session_state.messages[-1]["role"] != "assistant":
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    res = qa(prompt)
+                    answer, docs = res['result'], res['source_documents']
+                    st.write(answer) 
+            message = {"role": "assistant", "content": answer}
+            st.session_state.messages.append(message)
 
 
 if __name__ == "__main__":
