@@ -373,12 +373,12 @@ def main():
             prompt = st.chat_input()
         
         with st.sidebar:
-            audio_bytes = audio_bytes = audio_recorder(
+            audio_bytes = audio_recorder(
                 text="Listen:    ",
                 recording_color="#e8b62c",
                 neutral_color="#6aa36f",
                 icon_size="4x",
-                pause_threshold=0.5
+                pause_threshold=1.0
             )
         
         if st.sidebar.button("📝 Clear Conversation", key='clear_chat_button'):
