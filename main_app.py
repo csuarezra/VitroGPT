@@ -1,85 +1,131 @@
+import openai
 import streamlit as st
-import os
-import numpy as np
+import streamlit_chat
 
-from typing import List
-from langchain.llms import OpenAI
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
-from langchain.chains import RetrievalQA
-from langchain.document_loaders import TextLoader, CSVLoader, UnstructuredWordDocumentLoader, EverNoteLoader, \
-    UnstructuredEPubLoader, UnstructuredHTMLLoader, UnstructuredMarkdownLoader, UnstructuredODTLoader, PyMuPDFLoader, \
-    UnstructuredPowerPointLoader, UnstructuredEmailLoader
-from langchain.docstore.document import Document
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-from matplotlib import pyplot as plt
-from PIL import Image
+# be sure to end each prompt string with a comma.
+example_user_prompts = [
+    "echo Hello World!",
+    "How old is Elon Musk?",
+    "What makes a good joke?",
+    "Tell me a haiku.",
+]
 
-os.environ['OPENAI_API_KEY'] = st.secrets['OPENAI_API_KEY']
 
-image = Image.open('images/ai_logo.png')
-img_path = "img.jpg"
+def move_focus():
+    # inspect the html to determine which control to specify to receive focus (e.g. text or textarea).
+    st.components.v1.html(
+        f"""
+            <script>
+                var textarea = window.parent.document.querySelectorAll("textarea[type=textarea]");
+                for (var i = 0; i < textarea.length; ++i) {{
+                    textarea[i].focus();
+                }}
+            </script>
+        """,
+    )
 
-class MyElmLoader(UnstructuredEmailLoader):
-    """Wrapper to fallback to text/plain when default does not work"""
 
-    def load(self) -> List[Document]:
-        """Wrapper adding fallback for elm without html"""
-        try:
-            try:
-                doc = UnstructuredEmailLoader.load(self)
-            except ValueError as e:
-                if 'text/html content not found in email' in str(e):
-                    # Try plain text
-                    self.unstructured_kwargs["content_source"] = "text/plain"
-                    doc = UnstructuredEmailLoader.load(self)
-                else:
-                    raise
-        except Exception as e:
-            # Add file_path to exception message
-            raise type(e)(f"{self.file_path}: {e}") from e
+def stick_it_good():
 
-        return doc
+    # make header sticky.
+    st.markdown(
+        """
+            <div class='fixed-header'/>
+            <style>
+                div[data-testid="stVerticalBlock"] div:has(div.fixed-header) {
+                    position: sticky;
+                    top: 2.875rem;
+                    background-color: white;
+                    z-index: 999;
+                }
+                .fixed-header {
+                    border-bottom: 1px solid black;
+                }
+            </style>
+        """,
+        unsafe_allow_html=True
+    )
 
-def generate_response(uploaded_file, openai_api_key, query_text):
-    # Load document if file is uploaded
-    if uploaded_file is not None:
-        documents = [uploaded_file.read().decode()]
-        # Split documents into chunks
-        text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-        texts = text_splitter.create_documents(documents)
-        # Select embeddings
-        embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
-        # Create a vectorstore from documents
-        db = Chroma.from_documents(texts, embeddings)
-        # Create retriever interface
-        retriever = db.as_retriever()
-        # Create QA chain
-        qa = RetrievalQA.from_chain_type(llm=OpenAI(openai_api_key=openai_api_key), chain_type='stuff', retriever=retriever)
-        return qa.run(query_text)
 
-# Page title
-st.set_page_config(page_title='VitroGPT')
-col1, col2 = st.columns([0.6, 0.4])
-with col1:
-    st.image(image, use_column_width="auto")
-with col2:
-    #st.title("VitroGPT")
-    st.markdown("<h1 style='text-align: center;'>VitroGPT</h1>", unsafe_allow_html=True)
+def userid_change():
+    st.session_state.userid = st.session_state.userid_input
+    
+    
+def complete_messages(nbegin,nend,stream=False):
+    messages = [
+                {"role": m["role"], "content": m["content"]}
+                for m in st.session_state.messages
+            ]
+    with st.spinner(f"Waiting for {nbegin}/{nend} responses from ChatGPT."):
+        if stream:
+            responses = []
+            # Looping over openai's responses. async style.
+            for response in openai.ChatCompletion.create(
+                model = st.session_state["openai_model"],
+                messages = messages,
+                stream = True):
+                    partial_response_content = response.choices[0].delta.get("content","")
+                    responses.append(partial_response_content)
+            response_content = "".join(responses)
+        else:
+            response = openai.ChatCompletion.create(
+                model=st.session_state["openai_model"],
+                messages=[
+                    {"role": m["role"], "content": m["content"]}
+                    for m in st.session_state.messages
+                ],
+                stream=False,
+            )
+            response_content = response.choices[0]['message'].get("content","")
+    return response_content
+    
 
-# File upload
-uploaded_file = st.file_uploader('Upload an article', type='txt')
+def main():
+    if "openai_model" not in st.session_state:
+        st.session_state["openai_model"] = "gpt-3.5-turbo"
 
-# Form input and query
-result = []
-with st.form('myform', clear_on_submit=True):
-    query_text = st.text_input('Enter your question:', placeholder = 'Please provide a short summary.', disabled=not uploaded_file)
-    submitted = st.form_submit_button('Submit', disabled=not(uploaded_file and query_text))
-    if submitted and query_text:
-        with st.spinner('Calculating...'):
-            response = generate_response(uploaded_file, os.environ['OPENAI_API_KEY'], query_text)
-            result.append(response)
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+        
+    with st.container():
+        st.title("Streamlit ChatGPT Bot")
+        stick_it_good()
 
-if len(result):
-    st.info(response)
+    if "userid" in st.session_state:
+        st.sidebar.text_input(
+            "Current userid", on_change=userid_change, placeholder=st.session_state.userid, key='userid_input')
+        if st.sidebar.button("Clear Conversation", key='clear_chat_button'):
+            st.session_state.messages = []
+            move_focus()
+        if st.sidebar.button("Show Example Conversation", key='show_example_conversation'):
+            #st.session_state.messages = [] # don't clear current conversaations?
+            for i,up in enumerate(example_user_prompts):
+                st.session_state.messages.append({"role": "user", "content": up})
+                assistant_content = complete_messages(i,len(example_user_prompts))
+                st.session_state.messages.append({"role": "assistant", "content": assistant_content})
+            move_focus()
+        for i,message in enumerate(st.session_state.messages):
+            nkey = int(i/2)
+            if message["role"] == "user":
+                streamlit_chat.message(message["content"], is_user=True, key='chat_messages_user_'+str(nkey))
+            else:
+                streamlit_chat.message(message["content"], is_user=False, key='chat_messages_assistant_'+str(nkey))
+
+        if user_content := st.chat_input("Type your question here."): # using streamlit's st.chat_input because it stays put at bottom, chat.openai.com style.
+                nkey = int(len(st.session_state.messages)/2)
+                streamlit_chat.message(user_content, is_user=True, key='chat_messages_user_'+str(nkey))
+                st.session_state.messages.append({"role": "user", "content": user_content})
+                assistant_content = complete_messages(0,1)
+                streamlit_chat.message(assistant_content, key='chat_messages_assistant_'+str(nkey))
+                st.session_state.messages.append({"role": "assistant", "content": assistant_content})
+                #len(st.session_state.messages)
+    else:
+        st.sidebar.text_input(
+            "Enter a random userid", on_change=userid_change, placeholder='userid', key='userid_input')
+        streamlit_chat.message("Hi. I'm your friendly streamlit ChatGPT assistant.",key='intro_message_1')
+        streamlit_chat.message("To get started, enter a random userid in the left sidebar.",key='intro_message_2')
+                
+if __name__ == '__main__':
+    main()

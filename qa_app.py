@@ -317,17 +317,26 @@ def main():
             with st.chat_message(message["role"]):
                 st.write(message["content"])
 
-        # User-provided prompt
-        if prompt := st.chat_input():
-            st.session_state.messages.append({"role": "user", "content": prompt})
+        prompt = st.chat_input()
+        lst_btn = st.sidebar.button("🎧 Listen")
+
+        if lst_btn:
+            msg = speech_to_text()
+
+        if prompt:
+            msg = prompt
+
+        if prompt or lst_btn:
+            st.session_state.messages.append({"role": "user", "content": msg})
             with st.chat_message("Ask your question:"):
-                st.write(prompt)
+                st.write(msg)
+
 
         # Generate a new response if last message is not from assistant
         if st.session_state.messages[-1]["role"] != "assistant":
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
-                    res = qa(prompt)
+                    res = qa(msg)
                     answer, docs = res['result'], res['source_documents']
                     st.write(answer) 
             message = {"role": "assistant", "content": answer}
