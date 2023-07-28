@@ -377,8 +377,8 @@ def main():
                 text="Listen:    ",
                 recording_color="#e8b62c",
                 neutral_color="#6aa36f",
-                icon_size="6x",
-                pause_threshold=1.0
+                icon_size="4x",
+                pause_threshold=0.5
             )
         
         if st.sidebar.button("📝 Clear Conversation", key='clear_chat_button'):
@@ -391,7 +391,6 @@ def main():
                 st.write(message["content"])
 
         if audio_bytes:
-            st.audio(audio_bytes, format="audio/wav")
             msg = speech_to_text_st(audio_bytes)
 
         if prompt:
