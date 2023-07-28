@@ -6,7 +6,7 @@ import pyttsx3
 import streamlit as st
 import speech_recognition as sr
 
-from io import StringIO
+from io import StringIO, BytesIO
 from langchain.vectorstores import FAISS
 from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
@@ -19,6 +19,7 @@ from langchain.callbacks.manager import CallbackManager
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain.docstore.document import Document
+from audio_recorder_streamlit import audio_recorder
 
 os.environ['OPENAI_API_KEY'] = st.secrets['OPENAI_API_KEY']
 
@@ -155,6 +156,25 @@ def speech_to_text():
         print("Listening...")
         recognizer.adjust_for_ambient_noise(source)
         audio = recognizer.listen(source)
+
+    try:
+        #query = recognizer.recognize_google(audio, language = "es-MX")
+        query = recognizer.recognize_whisper_api(audio)
+        print(f"User: {query}")
+        return query
+    except sr.UnknownValueError:
+        print("Sorry, I did not understand what you said.")
+        return ""
+    except sr.RequestError as e:
+        print(f"Could not request results; {e}")
+        return ""
+    
+def speech_to_text_st(audio_bytes):
+    recognizer = sr.Recognizer()
+
+    with sr.AudioFile(BytesIO(audio_bytes)) as source:
+        recognizer.adjust_for_ambient_noise(source)
+        audio = recognizer.record(source)
 
     try:
         #query = recognizer.recognize_google(audio, language = "es-MX")
@@ -351,7 +371,15 @@ def main():
 
         with st.container():
             prompt = st.chat_input()
-            lst_btn = st.sidebar.button("🔊 Listen")
+        
+        with st.sidebar:
+            audio_bytes = audio_bytes = audio_recorder(
+                text="Listen:    ",
+                recording_color="#e8b62c",
+                neutral_color="#6aa36f",
+                icon_size="6x",
+                pause_threshold=1.0
+            )
         
         if st.sidebar.button("📝 Clear Conversation", key='clear_chat_button'):
             st.session_state.messages = [{"role": "assistant", "content": "How may I help you? Type your question"}]
@@ -362,13 +390,14 @@ def main():
             with st.chat_message(message["role"]):
                 st.write(message["content"])
 
-        if lst_btn:
-            msg = speech_to_text()
+        if audio_bytes:
+            st.audio(audio_bytes, format="audio/wav")
+            msg = speech_to_text_st(audio_bytes)
 
         if prompt:
             msg = prompt
 
-        if prompt or lst_btn:
+        if prompt or audio_bytes:
             st.session_state.messages.append({"role": "user", "content": msg})
             with st.chat_message("Ask your question:"):
                 st.write(msg)

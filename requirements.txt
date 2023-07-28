@@ -6,3 +6,4 @@ PyAudio
 SpeechRecognition
 pyttsx3
 faiss-cpu
+audio-recorder-streamlit
