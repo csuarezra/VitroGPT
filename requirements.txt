@@ -3,3 +3,6 @@ langchain
 openai
 chromadb
 tiktoken
+PyPDF2
+speech_recognition
+pyttsx3

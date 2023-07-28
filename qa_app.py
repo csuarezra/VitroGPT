@@ -32,11 +32,45 @@ MODEL_GPT3          = "gpt-3.5-turbo-16k"
 memory = ConversationBufferMemory(memory_key="history", input_key="question")
 conversation_history = []
 
-st.set_page_config(page_title="VitroGPT",page_icon=':shark:')
+st.set_page_config(page_title="VitroGPT",page_icon=':robot_face:')
+
+def move_focus():
+    # inspect the html to determine which control to specify to receive focus (e.g. text or textarea).
+    st.components.v1.html(
+        f"""
+            <script>
+                var textarea = window.parent.document.querySelectorAll("textarea[type=textarea]");
+                for (var i = 0; i < textarea.length; ++i) {{
+                    textarea[i].focus();
+                }}
+            </script>
+        """,
+    )
+
+def stick_it_good():
+
+    # make header sticky.
+    st.markdown(
+        """
+            <div class='fixed-header'/>
+            <style>
+                div[data-testid="stVerticalBlock"] div:has(div.fixed-header) {
+                    position: sticky;
+                    top: 2.875rem;
+                    background-color: #0e1117;
+                    z-index: 999;
+                }
+                .fixed-header {
+                    border-bottom: 1px solid white;
+                }
+            </style>
+        """,
+        unsafe_allow_html=True
+    )
 
 @st.cache_data
 def load_docs(files):
-    st.info("`Reading doc ...`")
+    # st.info("`Reading doc ...`")
     all_text = ""
     for file_path in files:
         file_extension = os.path.splitext(file_path.name)[1]
@@ -78,7 +112,7 @@ def split_texts(text, chunk_size, overlap, split_method):
     # IN: text, chunk size, overlap, split_method
     # OUT: list of str splits
 
-    st.info("`Splitting doc ...`")
+    # st.info("`Splitting doc ...`")
 
     split_method = "RecursiveTextSplitter"
     text_splitter = RecursiveCharacterTextSplitter(
@@ -223,15 +257,18 @@ def main():
 
    
 
-    st.write(
-        f"""
-        <div style="display: flex; align-items: center; margin-left: 0;">
-            <h1 style="display: inline-block;">VitroGPT</h1>
-            <sup style="margin-left:5px;font-size:small; color: green;">beta</sup>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+   
+    with st.container():
+        st.write(
+            f"""
+            <div style="display: flex; align-items: center; margin-left: 0;">
+                <h1 style="display: inline-block;">VitroGPT</h1>
+                <sup style="margin-left:5px;font-size:small; color: green;">beta</sup>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        stick_it_good()
     
     
 
@@ -310,15 +347,20 @@ def main():
 
         # Store LLM generated responses
         if "messages" not in st.session_state.keys():
-            st.session_state.messages = [{"role": "assistant", "content": "How may I help you?"}]
+            st.session_state.messages = [{"role": "assistant", "content": "How may I help you? Type your question"}]
+
+        with st.container():
+            prompt = st.chat_input()
+            lst_btn = st.sidebar.button("🔊 Listen")
+        
+        if st.sidebar.button("📝 Clear Conversation", key='clear_chat_button'):
+            st.session_state.messages = [{"role": "assistant", "content": "How may I help you? Type your question"}]
+            # move_focus()
 
         # Display chat messages
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.write(message["content"])
-
-        prompt = st.chat_input()
-        lst_btn = st.sidebar.button("🎧 Listen")
 
         if lst_btn:
             msg = speech_to_text()
