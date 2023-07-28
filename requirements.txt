@@ -2,6 +2,7 @@ langchain
 openai
 tiktoken
 PyPDF2
+PyAudio
 SpeechRecognition
 pyttsx3
 faiss-cpu
